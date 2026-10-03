@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Academic profile, research interests, courses and teaching materials">
+    <meta name="theme-color" content="#f8f5ef">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&amp;family=Source+Sans+3:wght@400;500;600&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="professor.css">
+    <title>Professor Profile</title>
+    <link rel="stylesheet" href="common.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#mainDocument">Skip to content</a>
+
+    <nav class="screen-nav" aria-label="Website navigation">
+      <a id="labHomeLink" href="https://ut-kdd.github.io/">← <span id="labName">Data Mining Lab</span></a>
+    </nav>
+
+    <main class="paper" id="mainDocument">
+      <header class="title-block">
+        <div class="faculty-heading">
+          <h1 id="professorName">Saman Haratizadeh</h1>
+          <p class="author-role" id="professorRole">Associate Professor</p>
+          <p class="affiliation" id="documentAffiliation">School of Intelligent Systems · College of Interdisciplinary Science and Technology · University of Tehran</p>
+        </div>
+        <div class="faculty-photo-frame">
+          <img id="professorPhoto" alt="Portrait of Professor Name" />
+          <span id="photoInitials" aria-hidden="true">SH</span>
+        </div>
+        <div class="faculty-contact-panel">
+          <p class="author-contact">
+            <a id="professorEmail"></a>
+            <span aria-hidden="true">·</span>
+            <span id="professorOffice">Office</span>
+            <span aria-hidden="true">·</span>
+            <span id="professorOfficeHours">Office hours</span>
+          </p>
+          <div class="author-links" id="professorLinks"></div>
+          <p class="meeting-note" id="meetingNote"></p>
+        </div>
+      </header>
+
+      <nav class="contents" aria-label="Professor page navigation">
+        <span data-ui="professor.label1">On this page:</span>
+        <a href="#research" data-ui="professor.label2">Research</a>
+        <a href="#publications" data-ui="professor.label3">Publications</a>
+        <a href="#teaching" data-ui="professor.label4">Teaching</a>
+        <a href="#supervision" data-ui="professor.label5">Supervision</a>
+        <a href="#resources">Off the syllabus</a>
+      </nav>
+
+      <section class="abstract" id="about">
+        <h2 data-ui="professor.label7">About me</h2>
+        <div class="abstract-body" id="biographyText"></div>
+        <p class="lab-reference" id="labStatement"></p>
+        <p class="student-invitation" id="studentInvitation"></p>
+      </section>
+
+      <section class="document-section" id="research">
+        <h2 data-ui="professor.label9">Research interests</h2>
+        <div class="interest-list" id="interestList"></div>
+      </section>
+
+      <section class="document-section" id="publications">
+        <div class="heading-row">
+          <h2 data-ui="professor.label10">Publications</h2>
+          <a id="fullPublicationsLink" href="#" data-ui="professor.label15">Complete publication record</a>
+        </div>
+        <div class="publication-list" id="publicationList"></div>
+      </section>
+
+      <section class="document-section" id="teaching">
+        <h2 data-ui="professor.label11">Courses and materials</h2>
+        <div class="teaching-list" id="courseList"></div>
+      </section>
+
+      <section class="document-section" id="supervision">
+        <h2 data-ui="professor.label12">Graduate supervision</h2>
+        <div class="student-table-head" aria-hidden="true">
+          <span data-ui="professor.label19">Researcher</span><span data-ui="professor.label20">Degree</span><span data-ui="professor.label21">Research topic</span>
+        </div>
+        <div class="supervision-list" id="studentList"></div>
+      </section>
+
+      <section class="document-section useful-section" id="resources">
+        <h2>Off the syllabus</h2>
+        <p id="resourcesIntro"></p>
+        <a id="personalPageLink" href="personal.html">Browse the collection ↗</a>
+      </section>
+
+      <footer class="document-footer">
+        <p><span id="footerName">Saman Haratizadeh</span> · <span id="currentYear"></span></p>
+      </footer>
+    </main>
+
+    <script src="content.js"></script>
+    <script src="content-utils.js"></script>
+    <script src="professor.js"></script>
+  </body>
+</html>
