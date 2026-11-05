@@ -1,0 +1,806 @@
+# Learning a Model: Decision Trees {#sec-decision-trees}
+
+The nearest-neighbor learner in Chapter 1 kept the training instances and consulted them when making a prediction. That is one choice of **model family**: a set of prediction rules the learner is allowed to consider. Fitting selects a particular rule within the chosen family.
+
+We now change the family. A **decision tree** predicts by following learned questions about the features until it reaches a stored answer. Training searches for the questions and their arrangement. Once the tree is fitted, ordinary prediction follows those questions without comparing the input with the training samples.
+
+This change makes a central problem of learning especially visible: many rules can fit the observations, so how should a learner choose among them?
+
+## What a Decision Tree Does
+
+Suppose a delivery service predicts whether a package will arrive **on time** or **late**. Its inputs are whether the delivery is **express** and whether the destination is **nearby**. Consider the following rule:
+
+![A delivery tree. Express deliveries are predicted on time. Other deliveries are predicted on time if nearby and late otherwise.](figures/02-delivery-tree.svg){#fig-02-delivery-tree}
+
+The first question is the **root**. A node that asks a question is an **internal node**. Its answers define **branches**, and a terminal node that supplies a prediction is a **leaf**. A prediction follows one path from the root to a leaf. For an express delivery to a distant destination, the answer is already on time after the first question; the second question is never reached.
+
+We begin with **classification** and **nominal features**: the target is a class, and each input takes categories with no numerical ordering. Our opening features have two categories, yes and no. Numerical features will require a search for thresholds. Numerical targets will lead to regression trees later in the chapter.
+
+### Training fit and tree size
+
+Suppose the delivery service has these four training samples:
+
+| Delivery | Express? | Nearby? | Observed outcome |
+|:---|:---:|:---:|:---|
+| A | yes | yes | on time |
+| B | yes | no | on time |
+| C | no | yes | on time |
+| D | no | no | late |
+
+A tree with one leaf, always predicting on time, gets three of four samples right. The tree in @fig-02-delivery-tree gets all four right using two questions and three leaves.
+
+We could also ask **Nearby?** after both answers to **Express?**. On the express branch, however, both resulting leaves would predict on time. This larger tree has four leaves and exactly the same predictions as the smaller one. The additional question contributes no predictive distinction.
+
+A useful preference is therefore to fit the observations well while avoiding unnecessary complexity. Smaller trees are easier to inspect and often less sensitive to accidental details in the training sample. Smallness alone does not establish predictive quality: the one-leaf tree is smaller still, but it misses a distinction present in these data.
+
+One conceptual way to express the tradeoff is
+
+$$
+J(T)=E_{\text{train}}(T)+\lambda C(T),
+$$
+
+where $E_{\text{train}}$ measures training error, $C(T)$ measures complexity, such as the number of leaves, and $\lambda\geq0$ specifies how strongly complexity is penalized. This describes a goal for a complete tree. The greedy algorithm we develop next does not directly minimize this expression over all possible trees.
+
+## Growing a Tree One Question at a Time
+
+Searching every possible tree is generally impractical. A root question changes the groups available for every later question, and the number of possible arrangements grows rapidly.
+
+A manageable alternative is **greedy recursive construction**. Choose a promising question at the current node, divide its training samples among the children, and solve the same problem within each child. The procedure is recursive because it applies itself to smaller groups. It is greedy because each choice uses its immediate benefit rather than comparing all complete trees that might follow.
+
+What should make a question promising?
+
+A **pure** node contains only one class. It needs no further question to reproduce the observed labels. A **mixed**, or impure, node contains several classes. Splits that produce cleaner class distributions move us toward useful leaves and may reduce the need for additional questions.
+
+**Impurity reduction** is therefore a local heuristic for growth. It does not directly measure the size of the eventual tree or its accuracy on new samples. A question can have little immediate benefit yet enable a useful later distinction. Greedy growth can miss such combinations.
+
+### A general split score
+
+Let $A$ be the training samples reaching a node, with size $n$. A candidate question $q$ divides it into nonempty children $A_1,\ldots,A_m$, of sizes $n_1,\ldots,n_m$. Let $I(A)$ be an average measure of the difficulty of predicting within a node. Define
+
+$$
+I_{\text{after}}(q;A)
+=\sum_{j=1}^{m}\frac{n_j}{n}I(A_j),
+\qquad
+\Delta I(q;A)=I(A)-I_{\text{after}}(q;A).
+$$
+
+The weights matter. A child containing one sample should not receive the same weight as a child containing ninety-nine. The weighted average is the expected child criterion for a sample chosen uniformly from the parent.
+
+For a nominal feature with more than two categories, a question may create one branch per category or group categories into two branches. The permitted questions are another choice of the learning procedure.
+
+The learner chooses an admissible question with the largest reduction. For classification, $I$ can be Gini impurity or entropy. For regression, we will use mean squared error around a node's fitted mean. The recursive construction is shared; the task determines the criterion and leaf prediction.
+
+## Class Impurity and Split Criteria
+
+Suppose the class proportions at a node are $p_1,\ldots,p_K$, where $K$ is the number of classes and $\sum_c p_c=1$.
+
+### Gini impurity
+
+The **Gini impurity** is
+
+$$
+G(A)=1-\sum_{c=1}^{K}p_c^2.
+$$
+
+To interpret it, independently draw two class labels from this node's class distribution. The probability that both equal class $c$ is $p_c^2$, so the probability that they disagree is $1-\sum_c p_c^2$. A pure node gives no disagreement and has impurity zero.
+
+For two classes, with proportions $p$ and $1-p$,
+
+$$
+G(A)=1-p^2-(1-p)^2=2p(1-p).
+$$
+
+Its maximum is $1/2$ at $p=1/2$. The **Gini reduction** of a split is $\Delta G=G(A)-\sum_j(n_j/n)G(A_j)$.
+
+### Entropy and information gain
+
+**Entropy** measures uncertainty about a class drawn from the node:
+
+$$
+H(A)=-\sum_{c=1}^{K}p_c\log_2p_c,
+$$
+
+using $0\log_2 0=0$. The quantity $-\log_2p_c$ is the information associated with observing class $c$, and entropy averages it over the class distribution. Base-two logarithms express the result in bits.
+
+Entropy is zero for a pure node. For two equally frequent classes it is one bit. Its reduction is called **information gain**:
+
+$$
+\operatorname{IG}(q;A)=H(A)-\sum_j\frac{n_j}{n}H(A_j).
+$$
+
+Gini impurity and entropy both favor cleaner children. Their scales differ, and they need not rank every pair of candidate splits identically.
+
+![Gini impurity and binary entropy vanish at pure nodes and reach their maxima when the two classes are equally frequent.](figures/02-impurity.svg){#fig-02-impurity}
+
+### A small comparison of two features
+
+Consider eight samples with nominal features $A$ and $B$:
+
+| Sample | $A$ | $B$ | Class |
+|---:|:---:|:---:|:---:|
+| 1 | yes | yes | + |
+| 2 | yes | yes | + |
+| 3 | yes | no | + |
+| 4 | yes | no | − |
+| 5 | no | no | + |
+| 6 | no | no | − |
+| 7 | no | no | − |
+| 8 | no | no | − |
+
+The parent has four samples of each class, so $G=0.5$ and $H=1$ bit. Splitting on $A$ gives child counts $(3+,1-)$ and $(1+,3-)$. Each child has Gini impurity $0.375$ and entropy approximately $0.81128$, giving
+
+$$
+\Delta G_A=0.5-0.375=0.125,
+\qquad
+\operatorname{IG}_A=1-0.81128\approx0.18872.
+$$
+
+Splitting on $B$ gives counts $(2+,0-)$ and $(2+,4-)$. The first child is pure. The other has Gini impurity $4/9$ and entropy approximately $0.91830$. Therefore
+
+$$
+\Delta G_B=\frac12-\left[\frac28(0)+\frac68\left(\frac49\right)\right]
+=\frac16\approx0.16667,
+$$
+
+$$
+\operatorname{IG}_B=1-\left[\frac28(0)+\frac68(0.91830)\right]
+\approx0.31128\text{ bits}.
+$$
+
+Both criteria select $B$. The pure child helps, but its contribution is weighted by its size; purity of a tiny child alone would not establish that a split is useful.
+
+## The Recursive Learning Algorithm
+
+We can now assemble the fitting procedure. The routine below uses impurity reduction as its score, as in our Gini and entropy examples.
+
+Start with all training samples at the root. A node's depth is the number of questions preceding it, so the root has depth zero. Growth limits include a maximum depth and a minimum child size.
+
+::: {.callout-note title="Greedy tree learning"}
+**Input:** samples $A$, current depth $d$, a node criterion, and growth rules.
+
+1. Fit a provisional leaf prediction using $A$. For classification, retain class proportions and predict a majority class, with a specified tie rule.
+2. If the node is pure, reaches a growth limit, or admits no valid question, return the leaf.
+3. For every admissible question $q$, partition $A$ and calculate $\Delta I(q;A)$.
+4. Select a question $q^*$ with the largest reduction, using a fixed rule for ties. If its gain fails the minimum-gain rule, return the leaf.
+5. Create an internal node storing $q^*$. For each child, apply this routine to that child's samples at depth $d+1$.
+6. Return the resulting subtree.
+:::
+
+The criterion uses only the samples reaching the current node. Validation data select growth settings or pruning strength; they do not supply labels for these training calculations.
+
+## Learning an Email Classifier
+
+We now apply the procedure to a less tidy example. The target is **spam** or **not spam**, and five yes/no features describe each email: membership in an existing thread, presence of a link, whether the sender is known, urgent language, and an attachment. We use **Gini reduction** to grow the tree.
+
+| Email | Existing thread? | Contains link? | Sender known? | Urgent language? | Attachment? | Spam? |
+|---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 1  | yes | yes | yes | no  | no  | no  |
+| 2  | yes | yes | no  | no  | yes | no  |
+| 3  | yes | no  | yes | no  | no  | no  |
+| 4  | yes | no  | no  | yes | no  | no  |
+| 5  | yes | yes | yes | yes | yes | no  |
+| 6  | yes | no  | yes | yes | yes | no  |
+| 7  | yes | no  | no  | yes | no  | yes |
+| 8  | no  | yes | no  | yes | no  | yes |
+| 9  | no  | yes | yes | no  | no  | yes |
+| 10 | no  | yes | no  | no  | yes | yes |
+| 11 | no  | yes | yes | yes | yes | yes |
+| 12 | no  | yes | yes | no  | yes | no  |
+| 13 | no  | no  | no  | yes | no  | no  |
+| 14 | no  | no  | yes | no  | no  | no  |
+| 15 | no  | no  | no  | no  | yes | no  |
+| 16 | no  | no  | yes | yes | yes | yes |
+
+
+### Choosing the root
+
+The sixteen training emails contain six spam and ten non-spam messages. Thus
+
+$$
+G(A)=1-\left(\frac6{16}\right)^2-\left(\frac{10}{16}\right)^2=0.46875.
+$$
+
+Consider **Existing thread?** The yes child contains emails 1–7, with counts $(1\text{ spam},6\text{ not spam})$. The no child contains emails 8–16, with counts $(5,4)$. Their impurities are
+
+$$
+G_{\text{yes}}=1-(1/7)^2-(6/7)^2=\frac{12}{49}\approx0.24490,
+$$
+
+$$
+G_{\text{no}}=1-(5/9)^2-(4/9)^2=\frac{40}{81}\approx0.49383.
+$$
+
+Consequently,
+
+$$
+G_{\text{after}}
+=\frac7{16}\frac{12}{49}+\frac9{16}\frac{40}{81}
+\approx0.38492,
+\qquad
+\Delta G\approx0.46875-0.38492=0.08383.
+$$
+
+Repeating the calculation for each feature gives:
+
+| Candidate root question | Gini reduction |
+|---|---:|
+| Existing thread? | 0.08383 |
+| Contains link? | 0.03125 |
+| Sender known? | 0.00446 |
+| Urgent language? | 0.03125 |
+| Attachment? | 0.00000 |
+
+The learner therefore chooses **Existing thread?** This decision comes from the calculated gains, rather than from an assumption that thread membership must be most important.
+
+### Fitting a child
+
+The no-thread child contains nine samples, with Gini impurity $40/81$. We score the remaining questions using only these nine emails:
+
+| Candidate question within the no-thread child | Gini reduction |
+|---|---:|
+| Contains link? | 0.14938 |
+| Urgent language? | 0.06049 |
+| Sender known? | 0.00494 |
+| Attachment? | 0.00494 |
+| Existing thread? | No split: constant in this node |
+
+The best question is **Contains link?** Its yes child contains emails 8–12, with counts $(4,1)$ and Gini $0.32$. Its no child contains emails 13–16, with counts $(1,3)$ and Gini $0.375$. Hence
+
+$$
+\Delta G
+=\frac{40}{81}
+-\left[\frac59(0.32)+\frac49(0.375)\right]
+\approx0.14938.
+$$
+
+If we stop the thread=yes branch and these two new branches, majority predictions give the following compact tree.
+
+![A compact email tree. Counts are (spam, not spam) among training samples reaching each node. Majority predictions at its three leaves make three training mistakes.](figures/02-spam-tree.svg){#fig-02-spam-tree}
+
+A new email outside an existing thread that contains a link follows the no branch at the root and the yes branch at the next question, ending at the spam leaf. The tree's predictions come from its stored questions and leaf values.
+
+This three-leaf tree misclassifies emails 7, 12, and 16. Stopping here captures a broad pattern; continuing may fit some of these exceptions.
+
+### Growing the full tree
+
+In the no-thread, no-link group, the four emails have counts $(1,3)$. Asking **Sender known?** separates emails 13 and 15, both non-spam, from emails 14 and 16, which have opposite labels. Asking **Urgent language?** in the latter group isolates email 16. Two further questions remove one training mistake in this region.
+
+Apply the same greedy routine to every remaining mixed node. For reproducibility, break equal split gains by the feature order *thread, link, known sender, urgent language, attachment*, and break equal class counts in favor of not spam. Require a strictly positive gain and allow unrestricted depth. The result is the ten-leaf tree in @fig-02-full-tree.
+
+![The fully grown email tree under the stated tie rules. Leaves show their prediction and (spam, not spam) counts. Nine leaves are pure; the highlighted leaf contains emails 4 and 7.](figures/02-full-tree.svg){#fig-02-full-tree}
+
+The tree makes one training mistake. Emails 4 and 7 have identical values for every recorded feature but opposite labels. No deterministic classifier using only these inputs can classify both correctly. “Fully grown” therefore does not imply that every leaf is pure.
+
+## Understanding Underfitting and Overfitting
+
+### Fit on training and unseen samples
+
+The one-leaf email tree predicts not spam everywhere and makes $6/16$ training mistakes. The compact three-leaf tree makes $3/16$, and the expanded ten-leaf tree makes $1/16$. These numbers show improved training fit. To decide whether the added distinctions are useful, we need predictions on cases excluded from fitting.
+
+Suppose the following three emails form a small validation set:
+
+| Email | Thread? | Link? | Known sender? | Urgent? | Attachment? | Observed label |
+|:---|:---:|:---:|:---:|:---:|:---:|:---|
+| A | no | yes | no | no | no | spam |
+| B | no | yes | yes | no | yes | spam |
+| C | no | no | yes | yes | no | not spam |
+
+Their predictions are:
+
+| Email | One-leaf tree | Compact three-leaf tree | Expanded ten-leaf tree |
+|:---|:---|:---|:---|
+| A | not spam | spam | spam |
+| B | not spam | spam | not spam |
+| C | not spam | not spam | spam |
+| Validation mistakes | 2/3 | 0/3 | 2/3 |
+
+The compact tree predicts all three correctly. The larger tree's extra distinctions overturn two of those predictions and make them wrong.
+
+**Underfitting** occurs when a fitted model misses useful predictive structure. The one-leaf tree is too restricted to express the thread/link pattern. **Overfitting** occurs when adapting to additional training detail harms prediction on new cases. The expanded tree illustrates that behavior on this validation set.
+
+These three cases make the mechanism inspectable, but they provide a very uncertain estimate of future performance. Their labels can guide model selection; once used for that purpose, they cannot also serve as an untouched final test.
+
+### Model complexity and prediction error
+
+A **validation curve** plots training and validation errors as a model setting changes. Here the horizontal axis represents increasing model complexity. When the model is too restricted, both errors can be high. With useful flexibility, validation error falls. Further flexibility may keep reducing training error while increasing validation error, revealing overfitting. A curve against training-set size answers a different question and is called a learning curve.
+
+![A typical schematic of prediction error against model complexity. Validation error lies above training error, reaches a minimum, and then rises as additional flexibility fits training detail. The curves illustrate a common pattern, not measured results for the email dataset or a required ordering for every finite sample.](figures/02-complexity-curve.svg){#fig-02-complexity-curve}
+
+Training error is usually lower because the model was fitted to those samples. This is a tendency, not an inequality that must hold between two finite datasets. A small validation set may happen to contain easier cases.
+
+The compact email tree illustrates why finite-sample results need not follow the schematic exactly: it makes $3/16$ training mistakes and $0/3$ validation mistakes. Correctly classifying these three held-out emails does not establish zero error on the wider population.
+
+### Bias and variance
+
+The comparisons so far used one training set. **Bias** and **variance** ask how the fitted prediction would behave across different training sets from the same population. They help explain why restricting a tree can improve stability while limiting the patterns it can represent.
+
+Fix an input $x$ and a learning procedure, including its complexity settings. Let $D$ denote a possible training set and $f_D(x)$ its fitted numerical prediction. For classification, take $f_D(x)$ to be the tree's predicted spam probability. Let
+
+$$
+f^*(x)=P(Y=\text{spam}\mid X=x)
+$$
+
+be the underlying spam probability for inputs $x$. The vertical bar means “given these inputs.” This probability is a conceptual target; finite training data do not usually reveal it exactly. Averaging over possible training sets gives
+
+$$
+\bar f(x)=\mathbb E_D[f_D(x)].
+$$
+
+The **bias** is the systematic difference between this average prediction and the target:
+
+$$
+\operatorname{Bias}(x)=\bar f(x)-f^*(x).
+$$
+
+For example, suppose five possible fitted trees assign probabilities $0.20,0.25,0.30,0.35,0.40$ to the same input. Their average is $0.30$. If the true probability is $0.60$, the bias of this illustrative distribution of fitted predictions is $-0.30$.
+
+The **variance** measures spread around the procedure's own average:
+
+$$
+\operatorname{Var}(x)
+=\mathbb E_D\left[(f_D(x)-\bar f(x))^2\right].
+$$
+
+Predictions $0.58,0.59,0.60,0.61,0.62$ have mean $0.60$ and average squared deviation $0.0002$. Predictions $0.20,0.40,0.60,0.80,1.00$ also average $0.60$, but their variance is $0.08$. If $f^*(x)=0.60$, both sets have zero bias, while their stability differs substantially. These finite examples treat the five training sets as equally likely; the definitions average over the full distribution of possible training sets.
+
+![Predictions for one fixed input across five equally weighted training sets. Bias concerns the average's displacement from the true probability. Variance concerns spread around that average. The last two panels have the same average but very different variances.](figures/02-bias-variance.svg){#fig-02-bias-variance}
+
+A shallow tree often has higher bias because it cannot represent useful distinctions. A deep tree has more flexibility, but changing a few training samples may change its questions and predictions substantially, producing higher variance. These are tendencies, not universal laws. Statistical bias is defined through repeated training sets; it is not another name for underfitting, and variance is not another name for overfitting. We will develop their relation to prediction error later.
+
+## Managing Underfitting and Overfitting
+
+The distinction between missing useful structure and fitting unstable detail suggests different responses. These principles apply across model families.
+
+If both training and validation performance are poor, the model may be **underfitting**. More informative features, a more expressive model family, or weaker restrictions on fitting can help it capture useful structure. Collecting more examples alone cannot supply a distinction absent from the recorded features.
+
+If training performance is good but validation performance is worse, the learner may be **overfitting**. Restricting its flexibility or penalizing unnecessary complexity can reduce its dependence on training detail. Such restrictions and penalties are forms of **regularization**. They may introduce some bias in exchange for greater stability. Additional independent, representative training samples can also reduce variance; repeatedly copying the same observations adds no new evidence.
+
+Nearest neighbors already gives a simple example: a small $k$ responds closely to individual samples, whereas a larger $k$ averages more broadly. An excessively large $k$ can miss useful local patterns. A tree faces a corresponding choice about how many distinctions to retain.
+
+Settings chosen to control a fitting procedure, such as $k$ for nearest neighbors, are **hyperparameters**. They are selected during model development rather than fitted within one candidate model. Compare candidate settings and other development choices using validation data. Reserve an untouched test set for assessment after those choices are complete. The goal is useful generalization, rather than either minimum training error or minimum complexity by itself.
+
+## Controlling Overfitting in Decision Trees
+
+For trees, we can act on how splits are chosen, when growth stops, and which branches are retained afterward. These methods address different sources of unnecessary specialization. Growth limits or pruning strength can also be relaxed when a tree is underfitting.
+
+Tree depth counts the largest number of questions on a prediction path. Other controls include the number of leaves, minimum leaf size, and minimum accepted gain.
+
+### Discouraging fragmented splits: gain ratio
+
+One route to overfitting is to create many branches supported by very few training samples. Entropy-based splitting can favor such fragmentation for nominal features with many values. A feature that gives each sample its own branch makes every training leaf pure, even if it is an identifier that offers little help on a new sample.
+
+**Gain ratio** adjusts information gain by the fragmentation caused by the split. If child proportions are $q_j=n_j/n$, define the **split information**
+
+$$
+H_{\text{split}}=-\sum_jq_j\log_2q_j,
+\qquad
+\operatorname{GainRatio}=\frac{\operatorname{IG}}{H_{\text{split}}}.
+$$
+
+For example, four equally sized branches have split information $-4(1/4)\log_2(1/4)=2$ bits. An information gain of $0.20$ bits then gives gain ratio $0.10$. The denominator discourages fragmentation that produces many small groups.
+
+A constant feature has $H_{\text{split}}=0$ and no defined ratio. Small denominators can favor unbalanced splits with little information gain, so practical gain-ratio procedures screen for adequate information gain before comparing ratios.
+
+Gain ratio changes the local split-selection rule in an entropy-based learner. It reduces a particular preference for overly fragmented splits; it does not directly penalize total tree size or guarantee protection against overfitting. Growth limits, pruning, and validation remain useful. Our worked email tree continues to use Gini reduction.
+
+### Stopping before a split
+
+A growth rule can reject a split even when its node is mixed. Maximum depth two allows at most two questions along a path. Minimum leaf size two rejects any split creating a child with fewer than two training samples. A minimum local Gini gain of $0.06$ rejects a question with smaller improvement.
+
+For example, the question **Urgent language?** separates emails 14 and 16 into singleton children. Minimum leaf size two rejects it, even though both children would be pure. The parent then remains a mixed leaf. For its equal class counts, our tie rule predicts not spam; its empirical spam proportion is $1/2$.
+
+A mixed leaf can be a deliberate complexity choice, or it can be unavoidable because the recorded features cannot distinguish conflicting labels. Its class proportions can still supply an estimated class probability. Such empirical estimates, especially from tiny leaves, need not be accurate or well calibrated.
+
+### Pruning after growth
+
+**Pruning** replaces a subtree with a leaf after a larger tree has been fitted. Consider again the region with no thread, no link, and a known sender. Its training emails are 14, labeled not spam, and 16, labeled spam. The urgent-language question classifies both correctly.
+
+Validation email C also reaches this region. Its urgent=yes answer sends it to the spam leaf, but its actual label is not spam. Replacing the question with a majority leaf gives not spam under our tie rule:
+
+| Model in this region | Leaves | Training mistakes | Validation mistakes on C |
+|---|---:|---:|---:|
+| Keep the urgent question | 2 | 0/2 | 1/1 |
+| Replace it with a leaf | 1 | 1/2 | 0/1 |
+
+This validation case favors pruning. One case gives limited evidence, but the example shows why accepting some additional training error can improve validation predictions.
+
+Validation-based pruning compares held-out performance. **Cost-complexity pruning** instead uses an error–size tradeoff to generate candidate subtrees, then chooses the pruning strength by validation or cross-validation. Growth limits prevent detail from being added; pruning removes detail afterward.
+
+These controls turn tree size into a development choice. Impurity guides local growth; validation helps decide how much of that growth to retain.
+
+### Selecting tree complexity with validation
+
+The general validation principle now becomes a concrete choice of maximum depth. Fit each candidate on the same training data and compare it on the same validation data.
+
+For the sixteen training emails and three validation emails above, the stated greedy procedure gives these actual counts as its depth limit changes:
+
+| Maximum depth | Training mistakes | Validation mistakes |
+|---:|---:|---:|
+| 0 | 6/16 | 2/3 |
+| 1 | 5/16 | 1/3 |
+| 2 | 3/16 | 0/3 |
+| 3 | 3/16 | 0/3 |
+| 4 | 2/16 | 2/3 |
+| 5 | 1/16 | 2/3 |
+
+Depths two and three tie on validation error, so we prefer two for simplicity. The depth-two greedy tree has four leaves: it also splits the thread=yes group, but both resulting leaves predict not spam. Collapsing that redundant split gives the compact three-leaf tree with identical class predictions. A depth limit alone need not produce the smallest tree expressing a given rule.
+
+Use the validation results to choose among the candidates, then assess the selected procedure on an untouched test set. Actual validation curves may be irregular; the schematic describes the tradeoff rather than prescribing the observed values.
+
+The classification learner and its complexity controls are now in place. We next extend the kinds of inputs and targets the same procedure can handle.
+
+## Numerical Features: Learning a Threshold
+
+So far, every feature has been categorical. A question such as
+
+> Existing thread?
+
+already comes with a natural division of the data.
+
+Now suppose that at some node we also know the **message length**, measured in words, for seven training emails:
+
+| Email | Message length | Spam? |
+|---:|---:|:---:|
+| A | 30  | yes |
+| B | 45  | yes |
+| C | 70  | yes |
+| D | 90  | no  |
+| E | 120 | yes |
+| F | 160 | no  |
+| G | 210 | no  |
+
+The node contains four spam and three non-spam emails, so its Gini impurity is
+
+$$
+G(A)
+=1-\left(\frac47\right)^2-\left(\frac37\right)^2
+=\frac{24}{49}
+\approx0.490.
+$$
+
+A numerical feature does not tell us what question to ask. The learner must choose a **threshold** as well as a feature. Candidate questions include
+
+$$
+\text{message length}<37.5?,
+$$
+
+$$
+\text{message length}<57.5?,
+$$
+
+$$
+\text{message length}<80?,
+$$
+
+and so on. Candidate thresholds are typically considered between consecutive observed values.
+
+Consider the threshold $80$. The left child contains the three messages of lengths 30, 45, and 70, all of which are spam, so its Gini impurity is zero. The right child contains one spam and three non-spam messages, so
+
+$$
+G_{\text{right}}
+=1-\left(\frac14\right)^2-\left(\frac34\right)^2
+=0.375.
+$$
+
+The weighted impurity after the split is therefore
+
+$$
+G_{\text{after}}
+=
+\frac37(0)
++
+\frac47(0.375)
+\approx0.214,
+$$
+
+which gives
+
+$$
+\Delta G
+\approx0.490-0.214
+=0.276.
+$$
+
+Repeating the calculation for every candidate threshold gives:
+
+| Threshold | Gini reduction |
+|---:|---:|
+| 37.5 | 0.061 |
+| 57.5 | 0.147 |
+| 80.0 | 0.276 |
+| 105.0 | 0.085 |
+| 140.0 | 0.261 |
+| 185.0 | 0.109 |
+
+Among these candidates, the learner chooses
+
+$$
+\text{message length}<80?
+$$
+
+because it has the largest Gini reduction.
+
+The basic logic of learning has not changed. Numerical features simply enlarge the search problem: the learner must search over both features and candidate thresholds.
+
+## Missing Values in Learning and Prediction
+
+A missing input raises two separate questions. During **learning**, how should it contribute to candidate split scores and child distributions? During **prediction**, what happens when a fitted question asks for a value that is unavailable? A complete policy must specify both stages.
+
+### General preprocessing policies
+
+Several methods apply across model families, including nearest neighbors and trees:
+
+- **Imputation.** Replace a missing numerical value with a statistic fitted on training data. Observed values $10,12,20$ have median $12$, so the stored rule fills a missing value with 12. For a nominal feature with three yes values and one no, mode imputation fills a missing value with yes. The same fitted replacements are used during validation and prediction.
+- **A missing category.** For a nominal feature, introduce a third value, missing. An encoding might assign yes to $(1,0,0)$, no to $(0,1,0)$, and missing to $(0,0,1)$. This makes absence observable to a model that accepts such encoded inputs.
+- **Imputation plus an indicator.** Fill a missing numerical value with 12 and add a feature recording whether the value was missing. An observed 12 becomes $(12,0)$; an imputed 12 becomes $(12,1)$. The learner can distinguish a measurement from a replacement.
+
+These are modeling choices. Imputation can conceal informative missingness, while a missing indicator can capture a data-collection artifact that changes later. Fit every replacement using training data only and evaluate the complete policy with the model.
+
+### A tree-specific policy: fractional routing
+
+A tree can also retain uncertainty about which branch a sample belongs to. We now define a **fractional-routing policy**: estimate branch proportions from samples whose tested feature is known, and distribute a missing-value sample's weight among those branches.
+
+Consider a separate toy node with twelve training emails:
+
+| Contains link? | Spam | Not spam | Total |
+|:---|---:|---:|---:|
+| yes | 4 | 2 | 6 |
+| no | 1 | 3 | 4 |
+| missing | 2 | 0 | 2 |
+
+Among the ten emails with known link values, six take the yes branch and four take the no branch. Store the proportions
+
+$$
+r_{\text{yes}}=\frac6{10}=0.6,
+\qquad
+r_{\text{no}}=\frac4{10}=0.4.
+$$
+
+A sample of weight $w$ with missing link value contributes $0.6w$ to the yes child and $0.4w$ to the no child. Its total contribution remains $w$. The proportions come from known feature values at this node, without conditioning on the missing sample's class.
+
+Initially every sample has weight one. If earlier missing values have already split a sample's weight, use those incoming weights when estimating the next branch proportions. In general,
+
+$$
+r_j=\frac{\text{known-feature weight assigned to branch }j}
+{\text{total weight with known feature value at this node}}.
+$$
+
+A feature with no known values supplies no such estimate and is not an admissible question under this policy.
+
+### Fitting with fractional samples
+
+Both missing-link emails are spam. Each contributes $0.6$ spam weight to yes and $0.4$ to no:
+
+| Child | Spam weight | Not-spam weight | Total weight | Spam proportion | Gini impurity |
+|:---|---:|---:|---:|---:|---:|
+| yes | $4+2(0.6)=5.2$ | 2 | 7.2 | $5.2/7.2$ | 0.401235 |
+| no | $1+2(0.4)=1.8$ | 3 | 4.8 | $1.8/4.8$ | 0.468750 |
+
+Class proportions are now class weight divided by total node weight. More generally, if $w_{ij}$ is sample $i$'s contribution to child $j$, then
+
+$$
+p_{c,j}=\frac{\sum_{i:y_i=c}w_{ij}}{\sum_iw_{ij}}.
+$$
+
+Use these proportions in the usual Gini or entropy formula. Replace child-size fractions by child-weight fractions in the split score. The parent has spam proportion $7/12$, so its Gini impurity is $35/72\approx0.486111$. For this fractional Gini policy,
+
+$$
+G_{\text{after}}
+=\frac{7.2}{12}(0.401235)+\frac{4.8}{12}(0.468750)
+\approx0.428241,
+$$
+
+$$
+\Delta G\approx0.486111-0.428241=0.057870.
+$$
+
+The fractional contributions continue into later questions, leaf class proportions, and any stopping rule based on effective sample weight. A fractional copy is not an additional independent observation.
+
+### Predicting with a missing feature
+
+Store the fitted branch proportions in the tree. When a new email has a missing link value, follow both branches and combine their class-probability predictions:
+
+$$
+\hat p(c\mid x)=\sum_j r_j\hat p_j(c\mid x).
+$$
+
+Here the children are leaves, giving
+
+$$
+\hat p(\text{spam}\mid x)
+=0.6\left(\frac{5.2}{7.2}\right)
++0.4\left(\frac{1.8}{4.8}\right)
+=\frac7{12}\approx0.5833.
+$$
+
+The not-spam probability is $5/12$, so the prediction is spam. Combine probabilities before making the final class decision, rather than giving each leaf an equal vote. If another tested feature is missing farther down, split again and multiply the branch fractions along each path. For a known value, follow the corresponding branch normally.
+
+![A missing link value distributes a new sample across both branches. Stored branch proportions weight the leaf class probabilities, producing a final spam probability of 7/12.](figures/02-fractional-routing.svg){#fig-02-fractional-routing}
+
+Fractional routing is one tree policy, not a requirement of all tree algorithms. Others learn a default direction for missing values or use a surrogate question that agrees with the unavailable primary question on training samples. The calculation here specifies a Gini-based fractional policy. It should not be confused with the exact missing-value split-scoring rules of every named tree algorithm.
+
+## Regression Trees
+
+A tree can also predict a numerical target, such as monthly rent. Its questions still partition the inputs. What changes is the leaf value and the criterion used to evaluate a partition.
+
+### Fitting a numerical leaf
+
+Suppose the target values at a node $A$ are $y_i$, and every sample reaching it must receive the same prediction $c$. Under squared error, choose $c$ to minimize
+
+$$
+S(c)=\sum_{i\in A}(y_i-c)^2.
+$$
+
+Let $n_A$ be the node size and $\bar y_A=(1/n_A)\sum_{i\in A}y_i$. Write
+
+$$
+y_i-c=(y_i-\bar y_A)+(\bar y_A-c).
+$$
+
+After squaring and summing, the cross term vanishes because $\sum_{i\in A}(y_i-\bar y_A)=0$. Hence
+
+$$
+S(c)=\sum_{i\in A}(y_i-\bar y_A)^2+n_A(\bar y_A-c)^2.
+$$
+
+The first term is fixed, and the second is minimized at $c=\bar y_A$. The best squared-error leaf prediction is therefore the mean.
+
+For targets $10,12,14,20$, the mean is 14 and the **sum of squared errors (SSE)** is
+
+$$
+\operatorname{SSE}(A)=16+4+0+36=56.
+$$
+
+The corresponding average node criterion is
+
+$$
+I(A)=\operatorname{MSE}(A)
+=\frac{\operatorname{SSE}(A)}{n_A}
+=\frac{56}{4}=14.
+$$
+
+### Expected child error and summed squared error
+
+A split into children $L$ and $R$ fits a separate mean in each. The expected squared error of a uniformly selected parent sample is
+
+$$
+I_{\text{after}}
+=\frac{n_L}{n_A}\operatorname{MSE}(L)
++\frac{n_R}{n_A}\operatorname{MSE}(R).
+$$
+
+Substituting $\operatorname{MSE}(L)=\operatorname{SSE}(L)/n_L$ and the analogous expression for $R$ gives
+
+$$
+I_{\text{after}}
+=\frac{n_L}{n_A}\frac{\operatorname{SSE}(L)}{n_L}
++\frac{n_R}{n_A}\frac{\operatorname{SSE}(R)}{n_R}
+=\frac{\operatorname{SSE}(L)+\operatorname{SSE}(R)}{n_A}.
+$$
+
+Thus the size weighting has not disappeared when a program adds the child SSE values. Each SSE already sums over its child's samples. The impurity reduction is
+
+$$
+\Delta I
+=\frac{\operatorname{SSE}(A)-\operatorname{SSE}(L)-\operatorname{SSE}(R)}{n_A}.
+$$
+
+For candidate splits of the same parent, $n_A$ is constant. Maximizing this MSE reduction is equivalent to maximizing the unnormalized SSE reduction. An unweighted average of the two child MSE values would generally be wrong. Numerical gain thresholds must also use the intended normalization: equivalence of rankings does not make the two gain values equal.
+
+### Comparing numerical splits
+
+Pair the targets with a feature $x$:
+
+| $x$ | 1 | 2 | 3 | 4 |
+|---|---:|---:|---:|---:|
+| $y$ | 10 | 12 | 14 | 20 |
+
+The split $x<3.5$ gives targets $10,12,14$ on the left and $20$ on the right. Their means are 12 and 20, and their SSE values are 8 and 0. Consequently,
+
+$$
+I_{\text{after}}
+=\frac34\left(\frac83\right)+\frac14(0)=2,
+\qquad
+\Delta I=14-2=12.
+$$
+
+The SSE reduction is $56-8=48$, exactly $n_A\Delta I=4(12)$. All candidate thresholds can be compared in either form:
+
+| Question | Summed child SSE | Expected child MSE | MSE reduction |
+|---|---:|---:|---:|
+| $x<1.5$ | $104/3\approx34.667$ | $26/3\approx8.667$ | $16/3\approx5.333$ |
+| $x<2.5$ | 20 | 5 | 9 |
+| $x<3.5$ | 8 | 2 | 12 |
+
+Both formulations select $3.5$. The recursive learner can continue in each child, now using mean predictions and the regression criterion instead of class proportions and Gini impurity.
+
+## What a Tree Represents
+
+A tree partitions the input space. Each path describes a region satisfying all the questions on that path, and a leaf supplies a constant prediction within that region.
+
+With two numerical inputs, a test of one coordinate makes an axis-aligned cut. The next test divides only the region reaching its node. For example, the following tree first asks $x_1<2$. Only when the answer is no does it ask $x_2<1$:
+
+![A regression tree and its two-feature partition. Region A has x1 below 2 and predicts 10. Regions B and C have x1 at least 2 and split at x2 equal to 1, predicting 20 and 30.](figures/02-tree-regions.svg){#fig-02-tree-regions}
+
+The predictor is **piecewise constant**. A numerical feature may be tested again deeper in a tree, allowing several intervals along one coordinate.
+
+Trees also represent **feature interactions**. In the compact email tree, link presence affects the prediction only after the email is found not to belong to an existing thread. The effect of one feature depends on the context supplied by another.
+
+A learner's **inductive bias** is the set of assumptions and preferences that guide how it generalizes beyond observed samples. For the trees here, this includes hierarchical partitions using one-feature questions and the restrictions imposed on complexity. Statistical bias, defined earlier as an average prediction error across training sets, is a different use of the word.
+
+The model family, fitting criterion, search algorithm, and evaluation metric play distinct roles. Gini reduction chooses a training split; it is not a test-set performance measure. Accuracy and the class-sensitive metrics introduced in Chapter 1 assess the predictions of the fitted tree, just as they assess other classifiers. These distinctions apply beyond trees and will guide our comparisons of later learners.
+
+## Summary
+
+- Choosing decision trees changes the model family. A fitted tree answers feature questions along a path to a stored leaf prediction; it ordinarily does not consult retained training samples at prediction time.
+- Greedy recursive growth uses a local split score such as Gini reduction or information gain. These heuristics do not guarantee an optimal complete tree.
+- Underfitting misses useful structure; overfitting adapts to training detail that does not generalize. Bias describes the average prediction relative to its target across possible training sets, while variance describes the spread of those predictions. They help explain these behaviors without being exact synonyms for them.
+- General responses include changing representation or model flexibility, regularization, and obtaining more representative training data. For trees, gain ratio addresses fragmented split selection, growth limits restrict expansion, and pruning removes branches. Validation guides these choices; test data assess the selected procedure.
+- Numerical inputs introduce threshold selection. Missing inputs require a policy for learning and prediction. Fractional routing conserves sample weight and combines branch probabilities.
+- Squared-error regression leaves predict means. Size-weighted child MSE equals summed child SSE divided by parent size, so both forms rank splits of a fixed node identically.
+- One-feature tests produce hierarchical, piecewise-constant regions and can express interactions. These representational choices and complexity preferences form part of the learner's inductive bias.
+
+The next chapter studies explicit probability models, keeping the distinction between representation, fitting, and evaluation in view.
+
+## Exercises
+
+1. **Model family and prediction.** Contrast what nearest neighbors and a decision tree store after fitting and what each does for a new input. Which choices belong to the model family, and which belong to the fitting procedure?
+
+2. **The delivery trees.** Draw a one-leaf tree, the three-leaf delivery tree, and the redundant four-leaf tree. Count their training mistakes and explain which split can be removed without changing any prediction.
+
+3. **Two impurity measures.** Derive $G=2p(1-p)$ for a binary node. Calculate Gini impurity and entropy at $p=0$, $1/2$, and $1$. Explain their different numerical scales.
+
+4. **Two candidate features.** Reproduce the gains of $A$ and $B$ in the eight-sample toy dataset. Why is the impurity after the split weighted by child size?
+
+5. **Implementing the algorithm.** Write pseudocode or a small program for the recursive learner. Include majority and split tie rules, maximum depth, minimum leaf size, and rejection of nonpositive gains. Reproduce the depth table in the chapter.
+
+6. **A limitation of greedy growth.** Four samples have binary inputs $(0,0),(0,1),(1,0),(1,1)$ and targets $0,1,1,0$. Compute each possible root Gini reduction. Can a tree classify all four correctly? Explain what happens if growth accepts only strictly positive immediate gains.
+
+7. **Root selection.** Recompute the Gini reductions for existing thread and contains link in the sixteen-email table. Then verify that the root information gain for existing thread is approximately $0.13810$ bits.
+
+8. **Local recalculation.** Verify every gain in the no-thread child table. Why can we not reuse the root gains to select this child's question?
+
+9. **Conflicting labels.** Verify that emails 4 and 7 have identical inputs. What lower bound does this impose on training mistakes for any deterministic classifier using these features? Why does a fully grown tree still have a mixed leaf?
+
+10. **Validation paths.** Trace validation emails A, B, and C through the compact and expanded trees. Reproduce the prediction table and explain which training exceptions cause the changed predictions.
+
+11. **Training and validation errors.** At maximum depth two, the email tree makes $3/16$ training mistakes and $0/3$ validation mistakes. Explain why this is possible even though the model was fitted on the training set. Why should the usual schematic show validation error above training error, and why does zero error on these three cases not establish perfect generalization?
+
+12. **Bias and variance.** Verify the means and variances in the five-prediction examples. Give an example with nonzero bias and zero variance. Explain why one fitted model on one training set cannot reveal the full distribution used in these definitions.
+
+13. **Choosing a response.** A nearest-neighbor model has high training and validation error when $k$ is very large. A tree has very low training error but substantially higher validation error. For each case, identify the likely problem and propose a suitable change. Explain why adding copied training observations would not provide the benefit of collecting new independent samples.
+
+14. **Gain ratio.** Compute the split information for four equal children. Compare two candidate splits with information gains $0.20$ and $0.16$ bits and split information $2$ and $1$ bits. Which does information gain select, and which does gain ratio select?
+
+15. **A pruning decision.** For the urgent-language question separating emails 14 and 16, reproduce the training and validation errors before and after pruning. State the tie rule and explain the limits of drawing a conclusion from one validation case.
+
+16. **Depth and simplification.** Why do maximum depths two and three tie on validation error? Why does the depth-two greedy tree have four leaves while the compact tree has three? What information is lost if we collapse two leaves with equal class decisions but different probability estimates?
+
+17. **Threshold search.** Reproduce the gain for message length below 80 and one other threshold in the table. Why do thresholds between the same two consecutive distinct observed values produce the same training partition?
+
+18. **Preprocessing missing inputs.** Use the numerical values $10,12,20$ to illustrate median imputation with and without an indicator. Explain which quantities must be fitted on training data and how a future missing value is processed.
+
+19. **Fractional training.** Reproduce the child class weights, Gini impurities, and gain for the twelve-email missing-link example. Verify conservation of total sample weight and total spam weight.
+
+20. **Fractional prediction.** Compute the spam probability when link is missing. Explain why averaging the two leaf probabilities with equal weights would implement a different rule. If a later missing feature sends 30% of the yes-branch weight left, what fraction of the original sample reaches that descendant?
+
+21. **Regression leaves.** Prove the squared-error identity used to obtain the mean prediction. What mean and SSE result from targets $10,12,14,20$?
+
+22. **Regression split rankings.** Verify all three rows in the regression-threshold table. Explain why adding child SSE values is correct while averaging child MSE values without size weights is not.
+
+23. **Normalization.** Two candidate splits of one parent have MSE reductions $0.4$ and $0.6$. If the parent contains 20 samples, what are their SSE reductions? Would a fixed minimum gain of $0.5$ have the same meaning under both normalizations?
+
+24. **Regions and interactions.** Write the three regions in @fig-02-tree-regions as inequalities. Explain why the second feature matters in only part of the input space. Relate this to thread and link in the email tree.
+
+25. **Four choices in learning.** Distinguish the model family, complete-tree objective, local split criterion, and search algorithm. Where do accuracy, precision, recall, and MCC enter the process?
+
+## Bibliographical Notes
+
+The chapter presents a general recursive approach, with explicitly stated criteria and tie rules for its worked examples. Named tree algorithms combine these components differently.
+
+- Breiman, L., Friedman, J. H., Olshen, R. A., and Stone, C. J. (1984). [*Classification and Regression Trees*](https://doi.org/10.1201/9781315139470). Wadsworth. Develops binary classification and regression trees, impurity criteria, cost-complexity pruning, and surrogate splits.
+- Quinlan, J. R. (1986). [Induction of decision trees](https://doi.org/10.1007/BF00116251). *Machine Learning*, 1, 81–106. Presents ID3 and information-gain-based induction. The Gini-based example here is not an implementation of ID3.
+- Quinlan, J. R. (1993). [*C4.5: Programs for Machine Learning*](https://doi.org/10.1016/C2009-0-27846-9). Morgan Kaufmann. Develops gain ratio, numerical attributes, missing-value handling, and pruning. Fractional distribution is associated with this line of work; the explicit Gini scoring policy in this chapter should be distinguished from C4.5's complete gain and gain-ratio rules.
+- Geman, S., Bienenstock, E., and Doursat, R. (1992). [Neural networks and the bias/variance dilemma](https://doi.org/10.1162/neco.1992.4.1.1). *Neural Computation*, 4(1), 1–58. Develops the statistical distinction between bias and variance beyond the illustrative definitions used here.
+
+- The scikit-learn developers' [validation and learning curves guide](https://scikit-learn.org/stable/modules/learning_curve.html) distinguishes changing a model setting from changing training-set size. Its cross-validation examples also illustrate why finite training and validation scores need not obey a fixed ordering.
