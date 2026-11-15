@@ -1,0 +1,650 @@
+# Learning from Data {#sec-learning-from-data}
+
+A child walking through a park sees an animal and asks, “What is that?” An adult answers, “A dog.” A little later they see another animal and hear, “That one is a cat.” After enough such experiences, the child can often identify a new cat or dog without being told.
+
+Something has changed through experience. The child has encountered examples, noticed properties that help distinguish them, received the correct answers, and gradually developed some rule—perhaps informal and difficult to describe—for deciding what a new animal is likely to be.
+
+This familiar situation contains the basic ingredients of learning from examples.
+
+The particular animal being considered is an **instance**: one case about which we may want to make a prediction. An encounter with that animal, together with the information we record about it, gives us an **observation**. Properties that may help distinguish the animals—such as the shape of the ears, the face, the body, or the way the animal moves—play the role of **features**. The answer we want to predict, such as *cat* or *dog*, is the **target**.
+
+The child also has some rule, explicit or implicit, for turning the observed features into an answer. We will call such a rule a **model**. The answer produced by the model for a particular instance is a **prediction**. When experience changes the model so that future predictions improve, **learning** has taken place.
+
+Most importantly, during these experiences the desired answer is supplied: the child sees an animal and is told what it is. Learning from examples for which the desired target is known is called **supervised learning**.
+
+Machine learning turns the same basic pattern into a computational process. We represent observations in a form a computer can process, provide examples whose targets are known, specify a mechanism for learning from those examples, and use the resulting model to make predictions for new instances.
+
+To see the entire process in a setting where we can carry out the computations explicitly, we now turn to a simple apartment-rental problem.
+
+## From Experience to Data
+
+Suppose we record information about previously rented apartments. For apartment $i$, let $x_i$ denote the information we will use to make a prediction, and let $y_i$ denote the target we want to predict.
+
+A collection of such observed pairs is a **dataset**:
+
+$$
+D=\{(x_i,y_i)\}_{i=1}^{n},
+$$
+
+where $n$ is the number of instances in the dataset.
+
+The collection of features supplied to a model is its **input**. If we record several features for each apartment, then the input can be represented by a **feature vector**
+
+$$
+x_i=(x_{i1},x_{i2},\ldots,x_{id}),
+$$
+
+where $d$ is the number of recorded features. The vector is not the apartment itself. It is the information about the apartment that we have chosen to provide to the learning system.
+
+A learner can use only information that is represented in its data.
+
+### Two kinds of prediction target
+
+The kind of supervised-learning problem depends on what target we ask the model to predict.
+
+If the target is the monthly rent,
+
+$$
+y_i=\text{monthly rent},
+$$
+
+then the target is numerical. Predicting a numerical quantity is called **regression**. The rent amounts in this chapter use a common, arbitrary currency unit.
+
+The same apartments can define a different task if our records also contain how long each apartment took to rent. Suppose we want to predict whether a new apartment will be rented within one week. The target could be
+
+$$
+y_i\in\{\text{within one week},\ \text{more than one week}\}.
+$$
+
+Now the target is a category, or **class**. Predicting a class is called **classification**. This example has two classes and is therefore a **binary classification** problem.
+
+If we instead predicted the exact number of days until the apartment is rented, the target would again be numerical and the problem would again be regression. The distinction between regression and classification is therefore determined by the target we choose, not by the kind of object we are studying.
+
+We first develop a regression learner for monthly rent, including how to choose and evaluate it. We then return to the same apartments with a classification target. This lets us see which parts of learning remain the same and which depend on the prediction task.
+
+## A First Machine Learner: Remember the Data
+
+To make the computation transparent, suppose we use only one feature at first: floor area. The machine is given the following observed examples:
+
+| Floor area (m²) | Monthly rent |
+|---:|---:|
+| 40 | 900 |
+| 50 | 1200 |
+| 60 | 1100 |
+| 70 | 1500 |
+| 80 | 1700 |
+| 90 | 1650 |
+| 100 | 2200 |
+| 110 | 2250 |
+
+The part of the dataset used to construct a model is called the **training set**. Using the training set to construct or adjust a model is called **training** or **fitting**.
+
+What is the simplest fitting procedure a machine could use?
+
+It could simply remember the training examples.
+
+After training, the machine stores
+
+$$
+40\mapsto900,\qquad
+50\mapsto1200,\qquad
+\ldots,\qquad
+110\mapsto2250.
+$$
+
+If we ask for the rent of the 70 m² apartment, it returns 1500. On every training instance, it can reproduce the observed target exactly.
+
+This example lets us separate two ideas that will remain distinct throughout the book.
+
+A **learning algorithm** is a procedure that uses training data to construct or modify a model. A **model** is the resulting rule used to make predictions.
+
+For this learner, the learning algorithm stores the observed pairs, and the fitted model behaves like a lookup table.
+
+The two stages are therefore:
+
+**Training:** training data → learning algorithm → fitted model.
+
+**Prediction:** new input → fitted model → predicted target.
+
+We denote a predicted target by $\hat y$. The hat distinguishes a model's prediction from the observed target $y$.
+
+## The Problem of a New Instance
+
+Now ask the fitted model for the rent of a 76 m² apartment.
+
+The training set contains no 76 m² apartment, so the lookup table has no answer.
+
+This exposes the central difficulty of learning from data. Reproducing answers that were already observed is usually not enough. We want what was learned from previous instances to help with **new instances**.
+
+The ability of a learned model to perform usefully on relevant cases that were not used to fit it is called **generalization**.
+
+Pure memorization does not tell us how to generalize. To predict an unseen apartment, we need some rule connecting it to the apartments we have already observed.
+
+## Generalizing by Similarity
+
+A natural rule is that apartments with similar floor areas may have similar rents.
+
+For a new apartment with area $x$, we can find the training apartment whose area is closest to $x$ and use that apartment's observed rent as the prediction.
+
+With a single numerical feature, the distance between two apartments can be measured by
+
+$$
+d(x,x_i)=|x-x_i|.
+$$
+
+This gives the **1-nearest-neighbor** prediction rule.
+
+For a 76 m² apartment, the closest training apartment is the 80 m² apartment because
+
+$$
+|76-80|=4.
+$$
+
+Its observed rent is 1700, so the model predicts
+
+$$
+\hat y=1700.
+$$
+
+The training step can still be as simple as storing the data. What changed is the prediction rule: instead of answering only exact matches, the model now uses a nearby observed case to predict an unseen one.
+
+This rule depends on an assumption: apartments that are close in the chosen feature should tend to have similar targets. Later chapters will examine such modeling assumptions carefully. For now, the important point is that some rule of this kind is necessary if observed data are to guide predictions about unobserved cases.
+
+## Using More Than One Neighbor
+
+Depending on a single training instance can be fragile. The nearest apartment may have an unusually high or low rent for reasons that are not captured by floor area.
+
+A simple alternative is to use several nearby apartments.
+
+Let $k$ denote the number of neighbors we use. In **$k$-nearest-neighbor regression**, or **$k$-NN regression**, we find the $k$ closest training instances and average their targets. If $N_k(x)$ denotes the set of the $k$ nearest neighbors of $x$, then
+
+$$
+\hat f_k(x)
+=
+\frac{1}{k}\sum_{i\in N_k(x)}y_i.
+$$
+
+Here $\hat f_k$ denotes the fitted prediction rule obtained when we use $k$ neighbors.
+
+For the 76 m² apartment, the three nearest training apartments have areas 80, 70, and 90 m², with rents 1700, 1500, and 1650. With $k=3$,
+
+$$
+\hat f_3(76)
+=
+\frac{1700+1500+1650}{3}
+\approx1616.7.
+$$
+
+But with $k=1$,
+
+$$
+\hat f_1(76)=1700.
+$$
+
+So two perfectly reasonable versions of the same learning method make different predictions:
+
+$$
+\hat f_1(76)=1700,
+\qquad
+\hat f_3(76)\approx1616.7.
+$$
+
+![Nearest-neighbor regression on the eight training apartments. The step functions show how predictions change with floor area; the marked query at 76 m² gives 1700 with one neighbor and about 1616.7 with three.](figures/01-neighbors.svg){#fig-01-neighbors}
+
+The training data alone have not told us which value of $k$ we should use.
+
+We therefore need a way to compare the resulting models.
+
+## Measuring Prediction Quality
+
+Suppose an apartment's actual rent is $y$ and a model predicts $\hat y$. One simple measure of the prediction error is the **squared error**
+
+$$
+(y-\hat y)^2.
+$$
+
+For several evaluated instances, we can average their squared errors. This gives the **mean squared error (MSE)**:
+
+$$
+\operatorname{MSE}
+=
+\frac{1}{m}\sum_{i=1}^{m}(y_i-\hat y_i)^2,
+$$
+
+where $m$ is the number of instances on which the model is being evaluated.
+
+MSE is an **evaluation metric**: a numerical summary of predictive performance. It is not the only possible metric, and later chapters will examine how different metrics express different ideas about what counts as a good prediction.
+
+For example, if the 76 m² apartment has an observed rent of 1600, the one-neighbor prediction has squared error $(1600-1700)^2=10{,}000$. The three-neighbor prediction has squared error $(1600-4850/3)^2\approx277.8$. Averaging helped on this case. MSE lets us compare the models across several cases.
+
+### Why not use the training set?
+
+We could compute MSE using the same eight apartments that were used for fitting. But that would not answer the question we care about.
+
+For example, with distinct training inputs, 1-nearest-neighbor regression predicts every training instance perfectly: when a training apartment is presented again, its nearest neighbor is the apartment itself. Its training MSE is therefore zero. Conflicting targets at exactly the same input would prevent a deterministic predictor from reproducing them all.
+
+That does not imply that it will make the best predictions for new apartments.
+
+Because our goal is generalization, model comparison should use data that were not used to fit the models being compared.
+
+## Choosing Between Models
+
+Suppose we have three additional apartments whose rents are known, but which we deliberately did not use for fitting:
+
+| Floor area (m²) | Actual rent |
+|---:|---:|
+| 54 | 1100 |
+| 76 | 1600 |
+| 96 | 1950 |
+
+These are **validation data**: observations held out from fitting and used to compare the alternatives under consideration, or **candidate models**. Together they form the **validation set**.
+
+Their predictions and squared errors are:
+
+| Area (m²) | Actual rent | $k=1$ prediction | Squared error | $k=3$ prediction | Squared error |
+|---:|---:|---:|---:|---:|---:|
+| 54 | 1100 | 1200 | 10,000 | 1066.7 | 1111.1 |
+| 76 | 1600 | 1700 | 10,000 | 1616.7 | 277.8 |
+| 96 | 1950 | 2200 | 62,500 | 2033.3 | 6944.4 |
+
+Predictions are displayed to one decimal place. Squared errors and the following MSE values use the unrounded predictions.
+
+For $k=1$,
+
+$$
+\operatorname{MSE}_{k=1}
+=
+\frac{(1100-1200)^2+(1600-1700)^2+(1950-2200)^2}{3}
+=
+27{,}500.
+$$
+
+For $k=3$, using the unrounded predictions,
+
+$$
+\operatorname{MSE}_{k=3}
+=
+\frac{(1100-3200/3)^2+(1600-4850/3)^2+(1950-6100/3)^2}{3}
+\approx
+2{,}777.8.
+$$
+
+On these previously unused apartments, the $k=3$ model has the lower MSE, so we choose it over the $k=1$ model.
+
+The value of $k$ is one choice affecting the model. We can make other choices too, including how its inputs represent an apartment and how it measures closeness. These also belong to model development.
+
+## The Representation Is Part of the Model
+
+So far, closeness meant a small difference in floor area. With several features, we must also decide how their differences should be combined.
+
+Suppose an apartment has input $(76,2)$: area 76 m² and two bedrooms. Two training apartments have inputs $A=(80,1)$ and $B=(70,2)$. One possible distance is
+
+$$
+d(x,x_i)=\sqrt{(x_1-x_{i1})^2+(x_2-x_{i2})^2}.
+$$
+
+It gives $d(x,A)=\sqrt{17}$ and $d(x,B)=6$, so $A$ is closer. If instead we measure area in units of 10 m², the squared distances become $0.4^2+1^2=1.16$ and $0.6^2=0.36$: now $B$ is closer.
+
+Neither comparison is dictated by the observations alone. The feature scales express how much a difference in area should matter relative to a difference in bedrooms. Other distance functions can express other assumptions. Choosing a representation and a comparison rule is therefore part of constructing the learner, and those choices must be evaluated along with $k$.
+
+Validation data can compare these alternatives just as they compared $k$. Any rescaling estimated from data must be fitted on the training set and then applied unchanged to validation inputs.
+
+This two-feature example illustrates a possible development choice. For the worked rent predictions, we continue with floor area alone and $k=3$. A final evaluation must wait until all such choices are finished.
+
+## A Separate Final Evaluation
+
+Once the representation, distance rule, and $k$ have been chosen, we need to assess the resulting procedure. It may seem that the validation results already answer that question.
+
+But we used those results to choose $k=3$.
+
+The validation data therefore participated in model development. If we now report the same validation MSE as if it were an untouched measure of final performance, our evaluation is no longer independent of the choices we made.
+
+To obtain a final estimate, we keep another group of observations separate until model development is finished. These observations form the **test set**.
+
+Suppose our untouched test set is
+
+| Floor area (m²) | Actual rent |
+|---:|---:|
+| 64 | 1300 |
+| 84 | 1650 |
+| 104 | 2100 |
+
+We have already selected $k=3$ using the validation data. We now evaluate that chosen model on the test set.
+
+Its predictions are
+
+| Area | Actual rent | $k=3$ prediction |
+|---:|---:|---:|
+| 64 | 1300 | 1266.7 |
+| 84 | 1650 | 1616.7 |
+| 104 | 2100 | 2033.3 |
+
+The resulting test MSE is
+
+$$
+\operatorname{MSE}_{\text{test}}
+\approx
+2{,}222.2.
+$$
+
+This number is not a guarantee about every future apartment. It is an estimate based on a finite set of unseen examples. Later chapters will examine much more carefully what such estimates can and cannot tell us.
+
+For now, the important point is the separation of roles:
+
+- the **training set** is used to fit models;
+- the **validation set** is used to compare alternatives and make development choices;
+- the **test set** is kept aside for final evaluation after those choices are finished.
+
+Conceptually, we split the available data with targets into three separate subsets,
+
+$$
+D = D_{\text{train}} \cup D_{\text{validation}} \cup D_{\text{test}},
+$$
+
+with each instance assigned to only one of the three sets.
+
+::: {.callout-note title="Why three sets?"}
+The three sets answer different questions.
+
+**Training:** What can the learning algorithm construct from these examples?
+
+**Validation:** Which of the alternatives under consideration should we choose?
+
+**Test:** After those choices are finished, how well does the resulting system perform on previously unused data?
+
+More sophisticated evaluation procedures will be needed in some settings, especially when data are scarce or observations have special structure. The train-validation-test split gives us the basic logic.
+:::
+
+![Training data produce candidate models; validation data guide development choices; the untouched test set evaluates the selected procedure. Arrows from training and validation form a development loop. Test results are reported after that loop is finished.](figures/01-data-roles.svg){#fig-01-data-roles}
+
+## Nearest Neighbors for Classification {#sec-neighbor-classification}
+
+Keep the same eight apartments and the same input, floor area. Now use the rental-time target introduced earlier: **Quick** means rented within one week, and **Later** means rented after one week. Suppose the observed outcomes are:
+
+| Floor area (m²) | Class target |
+|---:|:---|
+| 40 | Later |
+| 50 | Later |
+| 60 | Quick |
+| 70 | Quick |
+| 80 | Quick |
+| 90 | Later |
+| 100 | Later |
+| 110 | Later |
+
+These are illustrative rental outcomes, separate from the rent amounts. They were not obtained by thresholding the rents.
+
+Nearest-neighbor classification finds nearby training instances just as before. What changes is how their targets become a prediction. Averaging the words *Quick* and *Later* has no meaning. Instead, each neighbor votes for its class, and the model predicts the class with the most votes.
+
+For the 76 m² apartment, the three nearest neighbors are:
+
+| Neighbor area (m²) | Distance from 76 | Class |
+|---:|---:|:---|
+| 80 | 4 | Quick |
+| 70 | 6 | Quick |
+| 90 | 14 | Later |
+
+Two vote Quick and one votes Later, so the prediction is **Quick**. A complete implementation also specifies how to break equal-distance and equal-vote ties.
+
+We used $k=3$ to illustrate the vote. Its earlier validation success concerned a different target and a different evaluation metric. For classification, we must select $k$ using validation data and a metric appropriate to this task.
+
+## Evaluating Classification {#sec-classification-evaluation}
+
+For a classification target, an elementary question is whether the predicted label is correct. **Accuracy** is the fraction of evaluated instances classified correctly:
+
+$$
+\operatorname{accuracy}
+=\frac{\text{number of correct predictions}}{\text{number of evaluated instances}}.
+$$
+
+The **error rate** is $1-\operatorname{accuracy}$. These measures treat every mistake equally. To see what they can conceal, we need to distinguish the classes and the errors involving them.
+
+### Positive and negative classes
+
+For this evaluation, call Quick the **positive class** and Later the **negative class**. The names identify the class we are focusing on and its alternative. They do not mean desirable and undesirable. We may encode them as 1 and 0, but the numbers are labels, not numerical quantities to average for a class decision.
+
+The **actual class** records what happened after an apartment was listed. The **predicted class** records what the model said would happen. Their combinations give four outcomes:
+
+| Outcome | Predicted class | Actual class |
+|---|---|---|
+| True positive (TP) | Quick | Quick |
+| False positive (FP) | Quick | Later |
+| True negative (TN) | Later | Later |
+| False negative (FN) | Later | Quick |
+
+In these names, *true* or *false* says whether the prediction was correct; *positive* or *negative* identifies the predicted class.
+
+### A confusion matrix
+
+Suppose a classifier is evaluated on 200 previously unused apartments. The following **confusion matrix** counts its predictions against the actual outcomes. This is a hypothetical evaluation example, not a measured result for the eight-apartment training set.
+
+| Actual class | Predicted Quick (+) | Predicted Later (−) | Total |
+|---|---:|---:|---:|
+| Quick (+) | $TP=30$ | $FN=20$ | 50 |
+| Later (−) | $FP=10$ | $TN=140$ | 150 |
+| Total | 40 | 160 | 200 |
+
+The classifier makes $30+140=170$ correct predictions, so
+
+$$
+\operatorname{accuracy}=\frac{TP+TN}{200}=0.85,
+\qquad
+\operatorname{error}=\frac{FP+FN}{200}=0.15.
+$$
+
+Now suppose an agency uses predicted Quick apartments as a shortlist. Ten apartments on that shortlist actually rented later: false positives. Twenty apartments that did rent quickly were omitted: false negatives. An agent who relies on the shortlist may care both about its reliability and about how many suitable apartments it misses.
+
+### Precision and recall
+
+**Precision** asks: *Of the apartments predicted Quick, how many actually rented quickly?* Its denominator is the size of the predicted-positive group:
+
+$$
+P=\operatorname{precision}
+=\frac{TP}{TP+FP}
+=\frac{30}{40}=0.75.
+$$
+
+Thus 75% of the shortlist is correct. False positives reduce precision by admitting unsuitable cases to this group.
+
+**Recall** asks: *Of all apartments that actually rented quickly, how many did the model identify?* Its denominator is the size of the actual-positive group:
+
+$$
+R=\operatorname{recall}
+=\frac{TP}{TP+FN}
+=\frac{30}{50}=0.60.
+$$
+
+Thus the shortlist contains 60% of the Quick apartments. False negatives reduce recall by leaving relevant cases out.
+
+![Precision and recall count the same 30 true positives against different groups. Precision concerns the 40 predicted Quick apartments; recall concerns the 50 actually Quick apartments.](figures/01-precision-recall.svg){#fig-01-precision-recall}
+
+The classifier's 85% accuracy therefore coexists with missing 40% of the Quick apartments. The measures answer different questions.
+
+### F1: combining precision and recall
+
+The **F1 score** combines precision and recall through their harmonic mean:
+
+$$
+F_1=\frac{2PR}{P+R}.
+$$
+
+A high F1 requires both quantities to be high. Substituting their count formulas and canceling the common factors gives
+
+$$
+F_1
+=\frac{2(TP)^2}{TP[(TP+FN)+(TP+FP)]}
+=\frac{2TP}{2TP+FP+FN},
+$$
+
+where the cancellation assumes $TP>0$. The final count formula also gives $F_1=0$ when $TP=0$ and $FP+FN>0$. Here,
+
+$$
+F_1=\frac{60}{60+10+20}=\frac23\approx0.667.
+$$
+
+True negatives do not enter this formula. F1 summarizes performance on the chosen positive class; it does not account for every aspect of the confusion matrix.
+
+### Matthews correlation coefficient
+
+The **Matthews correlation coefficient (MCC)** is the correlation between the actual and predicted binary labels. Expressed through the confusion counts, it is
+
+$$
+\operatorname{MCC}
+=\frac{TP\,TN-FP\,FN}
+{\sqrt{(TP+FP)(TP+FN)(TN+FP)(TN+FN)}}.
+$$
+
+The denominator normalizes by both actual and predicted class frequencies. MCC uses all four entries and, when defined, ranges from $-1$ to $1$: perfect agreement gives $1$, zero correlation gives $0$, and completely reversed labels give $-1$. In our example,
+
+$$
+\operatorname{MCC}
+=\frac{30(140)-10(20)}{\sqrt{40(50)(150)(160)}}
+=\frac{4000}{\sqrt{48{,}000{,}000}}
+\approx0.5774.
+$$
+
+Exchanging the positive and negative class names consistently leaves MCC unchanged. It provides a symmetric summary, though the application may still require separate attention to particular mistakes.
+
+::: {.callout-note title="Undefined ratios"}
+Precision is undefined if nothing is predicted positive; recall is undefined if the evaluation set contains no actual positives. The count formula for F1 is undefined if $TP=FP=FN=0$. MCC is undefined when an actual or predicted class has zero frequency. Software may return a conventional value, such as zero, in such cases. Report the convention and distinguish it from a ratio supported by the data.
+:::
+
+### Which class is positive?
+
+The choice of positive class is part of interpreting precision, recall, and F1. Reevaluate the same predictions with Later as positive. The new counts are $TP=140$, $FP=20$, $FN=10$, and $TN=30$:
+
+| Positive class | Precision | Recall | F1 | MCC |
+|---|---:|---:|---:|---:|
+| Quick | $30/40=0.750$ | $30/50=0.600$ | $2/3\approx0.667$ | $0.5774$ |
+| Later | $140/160=0.875$ | $140/150\approx0.933$ | $28/31\approx0.903$ | $0.5774$ |
+
+The model has not improved. We have asked about its performance on a different class. Accuracy and MCC stay the same, while the class-oriented measures change.
+
+In some applications the task singles out a class of interest. If neither class has priority, reporting only one class's F1 gives an incomplete account. We can report both class scores and choose an explicit averaging rule.
+
+### Averaging across classes
+
+**Macro averaging** gives each class equal weight. Compute a measure separately for each class, treating that class as positive, then take the arithmetic mean. In our binary example,
+
+$$
+P_{\text{macro}}=\frac{0.750+0.875}{2}=0.8125,
+\qquad
+R_{\text{macro}}=\frac{0.600+140/150}{2}\approx0.7667,
+$$
+
+$$
+F_{1,\text{macro}}=\frac{2/3+28/31}{2}\approx0.7849.
+$$
+
+Macro F1 averages the class F1 scores. It is generally different from the harmonic mean of macro precision and macro recall.
+
+A class's **support** is the number of evaluated instances actually belonging to it. **Support-weighted averaging** weights each class score by this frequency. There are 50 Quick and 150 Later apartments, giving
+
+$$
+F_{1,\text{weighted}}
+=\frac{50}{200}\left(\frac23\right)
++\frac{150}{200}\left(\frac{28}{31}\right)
+\approx0.8441.
+$$
+
+**Micro averaging** pools the per-class confusion counts before computing the measure. Here the two classes together contribute $30+140=170$ true positives, $10+20=30$ false positives, and $20+10=30$ false negatives. Therefore
+
+$$
+P_{\text{micro}}=R_{\text{micro}}=\frac{170}{200}=0.85,
+\qquad
+F_{1,\text{micro}}=0.85.
+$$
+
+More generally, in a single-label classification task evaluated over all classes, each correct prediction contributes one pooled true positive. Each error contributes one false positive for the predicted class and one false negative for the actual class. Consequently micro precision, micro recall, micro F1, and accuracy coincide. This identity need not hold in multilabel tasks or when only a subset of classes is evaluated.
+
+| Averaging rule | What receives weight | F1 in this example |
+|---|---|---:|
+| Macro | Every class equally | 0.7849 |
+| Support-weighted | Every class by its actual frequency | 0.8441 |
+| Micro | Pooled per-class prediction counts | 0.8500 |
+
+These rules also extend to tasks with more than two classes. Macro averaging expresses equal importance of class-level performance; frequency weighting reflects the observed class mix. Neither choice alone establishes fairness in any broader sense. State the rule rather than reporting an unlabeled “F1.”
+
+### A baseline and a reporting practice
+
+A rule that always predicts Later obtains accuracy $150/200=0.75$, yet finds no Quick apartments: Quick recall and Quick F1 are both zero. Its Quick precision and MCC have zero denominators. Comparing with this simple **baseline** helps reveal what a more elaborate classifier contributes.
+
+A useful evaluation report identifies the classes, shows the confusion matrix or relevant class scores, and names any averaging convention. The metric used to choose a model should reflect the prediction task. As with regression, validation supports that choice, and an untouched test set supports the final assessment.
+
+## Beyond Supervised Learning
+
+Everything in our example depended on having targets for the training instances. The recorded rent told the learner what happened for each observed apartment.
+
+But suppose we had descriptions of many apartments and no target values at all:
+
+$$
+D=\{x_i\}_{i=1}^{n}.
+$$
+
+There is no supplied $y_i$ to predict. We might still want to discover useful structure in the data: perhaps groups of similar apartments, unusual cases, or a compact way to represent the collection.
+
+Learning from data without supplied targets is called **unsupervised learning**.
+
+Supervised and unsupervised learning are two fundamental settings, but they are not the whole field. Later we will encounter settings in which only some targets are available, useful targets are constructed from the data themselves, observations arrive over time, or the learner's actions influence what it observes next.
+
+For now, supervised learning has given us a complete first example of what it means for a machine to learn from data.
+
+## Summary
+
+- An instance is one case; features describe it, and a target specifies what to predict. Supervised learning uses observed input–target pairs. Regression predicts numbers; classification predicts categories.
+- A learning algorithm constructs a model, and that model produces predictions. Generalization concerns its performance on relevant new cases.
+- Nearest neighbors extends observed targets to unseen inputs through a chosen notion of closeness. Both the representation and the number of neighbors affect the resulting predictions.
+- Training data fit candidates, validation data guide choices, and test data estimate performance after those choices are finished. Reusing the test set for selection compromises that estimate.
+- For classification, nearest neighbors votes over labels. Accuracy counts overall correctness; precision and recall distinguish reliability of positive predictions from coverage of actual positives. F1 combines them, while MCC uses all four confusion counts.
+- Precision, recall, and F1 depend on the positive class. Report per-class results and specify macro, support-weighted, or micro averaging when combining them.
+- Unsupervised learning seeks structure without supplied targets. We will return to it after developing supervised learning.
+
+The next chapter replaces direct consultation of neighboring cases with an explicit sequence of learned decisions.
+
+## Exercises
+
+1. **Features and targets.** A property website records floor area, number of bedrooms, neighborhood, building age, monthly rent, and the number of days until each apartment is rented. Identify the instances, possible features, and two different possible targets. Give one regression task and one classification task that can be formed from the same data.
+
+2. **Kinds of targets.** Suppose the target is whether an apartment is rented within one week. Explain why this is a classification problem. If the target is instead the exact number of days until it is rented, what kind of problem is it?
+
+3. **Algorithm and model.** Explain in your own words the difference between a learning algorithm and a fitted model. Use the memorizing learner or nearest-neighbor learner as an example.
+
+4. **One neighbor.** Using the training table in this chapter, compute the 1-nearest-neighbor prediction for apartments of size 63 m² and 107 m².
+
+5. **Three neighbors.** Using the same table, compute the 3-nearest-neighbor predictions for 63 m² and 107 m². Compare them with the predictions from Exercise 4.
+
+6. **Comparing errors.** Suppose a new validation apartment has area 86 m² and actual rent 1720. Compute the squared error of the $k=1$ and $k=3$ models on this apartment.
+
+7. **Memorization and evaluation.** Why is the training MSE of 1-nearest-neighbor regression equal to zero when each training input is unique and the model is evaluated on the same training data?
+
+8. **Units and neighbors.** Reproduce the two-feature comparison in the chapter. What happens if bedrooms are multiplied by 10 instead? Explain why changing units can change a nearest-neighbor predictor.
+
+9. **Three data roles.** A researcher tries ten different nearest-neighbor models, selects the one with the lowest validation MSE, and then reports its performance on a previously untouched test set. Explain the different roles played by the training, validation, and test data.
+
+10. **Test-set selection.** Another researcher chooses the value of $k$ that gives the lowest test MSE and reports that same number as the final performance of the model. Why is the test set no longer serving its intended role?
+
+11. **A class vote.** Using the rental-time labels, predict the class of a 63 m² apartment with $k=1$ and $k=3$. Explain why averaging class codes is not itself a complete classification rule.
+
+12. **Confusion counts.** For the 200-apartment evaluation, explain what the two kinds of error mean for an agency's Quick shortlist. Verify accuracy, precision, recall, F1, and MCC.
+
+13. **Changing the class of interest.** Treat Later as positive. Write the new confusion counts and recompute precision, recall, and F1. Explain why the model's predictions, accuracy, and MCC are unchanged.
+
+14. **Averaging.** Reproduce macro precision, macro recall, macro F1, and support-weighted F1. Compute the F1 obtained by combining macro precision and macro recall in the harmonic-mean formula. Why is that not macro F1?
+
+15. **Micro counts.** For a single-label task with three classes, explain why a wrong prediction contributes one false positive and one false negative when counts are pooled over all classes. Deduce the relation between micro F1 and accuracy.
+
+16. **The constant baseline.** Construct the confusion matrix for an always-Later predictor. Which metrics are zero, which are undefined, and what does its accuracy conceal?
+
+17. **Choosing the task.** Why does selecting $k=3$ by validation MSE for rent prediction not select $k$ for rental-time classification? Describe an appropriate fitting, selection, and final-evaluation procedure for the latter task.
+
+18. **Learning without targets.** Imagine a dataset containing only descriptions of apartments, with no rents, rental times, or other targets. Give two different unsupervised-learning questions that could be asked about the dataset.
+
+## Bibliographical Notes
+
+Nearest-neighbor methods illustrate an enduring idea: prediction can be based directly on stored cases. The separation between fitting, selection, and evaluation is broader than any particular learner.
+
+- Cover, T. M., and Hart, P. E. (1967). [Nearest neighbor pattern classification](https://doi.org/10.1109/TIT.1967.1053964). *IEEE Transactions on Information Theory*, 13(1), 21–27. A foundational analysis of nearest-neighbor classification; its probability bounds go beyond this chapter's introductory regression example.
+- Stone, M. (1974). [Cross-validatory choice and assessment of statistical predictions](https://doi.org/10.1111/j.2517-6161.1974.tb00994.x). *Journal of the Royal Statistical Society B*, 36(2), 111–133. Develops the distinction between choosing a predictor and assessing its performance, including procedures that reuse limited data systematically.
+
+- Matthews, B. W. (1975). [Comparison of the predicted and observed secondary structure of T4 phage lysozyme](https://doi.org/10.1016/0005-2795(75)90109-9). *Biochimica et Biophysica Acta*, 405(2), 442–451. Introduces the correlation measure now used broadly to evaluate binary classifiers.
+- The scikit-learn developers' [classification metrics guide](https://scikit-learn.org/stable/modules/model_evaluation.html#classification-metrics) and [precision, recall, F-score, and support reference](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_recall_fscore_support.html) document the standard averaging conventions used here. These conventions matter when comparing reported results across software and studies.
